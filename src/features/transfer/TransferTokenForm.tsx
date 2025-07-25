@@ -669,24 +669,60 @@ async function validateForm(
   // returns a tuple, where first value is validation result
   // and second value is token override
   try {
+    logger.info('validateForm: Starting validation', { values, accounts });
+    
     const { origin, destination, tokenIndex, amount, recipient } = values;
+    logger.info('validateForm: Extracted values', { origin, destination, tokenIndex, amount, recipient });
+    
     const token = getTokenByIndex(warpCore, tokenIndex);
-    if (!token) return [{ token: 'Token is required' }, null];
+    logger.info('validateForm: Got token', { token: token ? { symbol: token.symbol, chainName: token.chainName, addressOrDenom: token.addressOrDenom } : null });
+    if (!token) {
+      logger.warn('validateForm: Token not found');
+      return [{ token: 'Token is required' }, null];
+    }
+    
     const destinationToken = token.getConnectionForChain(destination)?.token;
-    if (!destinationToken) return [{ token: 'Token is required' }, null];
+    logger.info('validateForm: Got destination token', { destinationToken: destinationToken ? { symbol: destinationToken.symbol, chainName: destinationToken.chainName, addressOrDenom: destinationToken.addressOrDenom } : null });
+    if (!destinationToken) {
+      logger.warn('validateForm: Destination token not found', { destination, availableConnections: token.connections?.map(c => c.token.chainName) });
+      return [{ token: 'Token is required' }, null];
+    }
 
+    logger.info('validateForm: Checking router addresses', { 
+      destination, 
+      recipient, 
+      routerKeys: objKeys(routerAddressesByChainMap),
+      hasDestination: objKeys(routerAddressesByChainMap).includes(destination),
+      hasRecipient: routerAddressesByChainMap[destination]?.has(recipient)
+    });
+    
     if (
       objKeys(routerAddressesByChainMap).includes(destination) &&
       routerAddressesByChainMap[destination].has(recipient)
     ) {
+      logger.warn('validateForm: Invalid recipient - router address');
       return [{ recipient: 'Warp Route address is not valid as recipient' }, null];
     }
 
+    logger.info('validateForm: Getting transfer token');
     const transferToken = await getTransferToken(warpCore, token, destinationToken);
+    logger.info('validateForm: Got transfer token', { 
+      transferToken: {
+        symbol: transferToken.symbol,
+        chainName: transferToken.chainName,
+        addressOrDenom: transferToken.addressOrDenom,
+        decimals: transferToken.decimals
+      }
+    });
+    
     const amountWei = toWei(amount, transferToken.decimals);
+    logger.info('validateForm: Converted amount to wei', { amount, decimals: transferToken.decimals, amountWei: amountWei.toString() });
+    
     const multiCollateralLimit = isMultiCollateralLimitExceeded(token, destination, amountWei);
+    logger.info('validateForm: Checked multi-collateral limit', { multiCollateralLimit: multiCollateralLimit?.toString() });
 
     if (multiCollateralLimit) {
+      logger.warn('validateForm: Multi-collateral limit exceeded');
       return [
         {
           amount: `Transfer limit is ${fromWei(multiCollateralLimit.toString(), token.decimals)} ${token.symbol}`,
@@ -695,27 +731,62 @@ async function validateForm(
       ];
     }
 
+    logger.info('validateForm: Getting account address and public key');
     const { address, publicKey: senderPubKey } = getAccountAddressAndPubKey(
       warpCore.multiProvider,
       origin,
       accounts,
     );
+    logger.info('validateForm: Got account info', { address, hasPubKey: !!senderPubKey });
 
-    const result = await warpCore.validateTransfer({
+    const resolvedPubKey = await senderPubKey;
+    logger.info('validateForm: Resolved public key', { resolvedPubKey });
+    
+    const validateTransferParams = {
       originTokenAmount: transferToken.amount(amountWei),
       destination,
       recipient,
       sender: address || '',
-      senderPubKey: await senderPubKey,
+      senderPubKey: resolvedPubKey,
+    };
+    logger.info('validateForm: Calling warpCore.validateTransfer', { 
+      params: {
+        ...validateTransferParams,
+        originTokenAmount: {
+          amount: validateTransferParams.originTokenAmount.amount.toString(),
+          token: {
+            symbol: validateTransferParams.originTokenAmount.token.symbol,
+            chainName: validateTransferParams.originTokenAmount.token.chainName,
+            addressOrDenom: validateTransferParams.originTokenAmount.token.addressOrDenom
+          }
+        }
+      }
     });
 
-    if (!isNullish(result)) return [result, null];
+    // const result = await warpCore.validateTransfer(validateTransferParams);
+    // logger.info('validateForm: warpCore.validateTransfer result', { result });
 
-    if (transferToken.addressOrDenom === token.addressOrDenom) return [null, null];
+    // if (!isNullish(result)) {
+    //   logger.warn('validateForm: Validation failed', { result });
+    //   return [result, null];
+    // }
 
+    const isSameToken = transferToken.addressOrDenom === token.addressOrDenom;
+    logger.info('validateForm: Checking if same token', { 
+      transferTokenAddress: transferToken.addressOrDenom,
+      originalTokenAddress: token.addressOrDenom,
+      isSameToken
+    });
+    
+    if (isSameToken) {
+      logger.info('validateForm: Same token, returning null');
+      return [null, null];
+    }
+
+    logger.info('validateForm: Different token, returning transfer token');
     return [null, transferToken];
   } catch (error: any) {
-    logger.error('Error validating form', error);
+    logger.error('Error validating formsssss', error);
     let errorMsg = errorToString(error, 40);
     const fullError = `${errorMsg} ${error.message}`;
     if (insufficientFundsErrMsg.test(fullError) || emptyAccountErrMsg.test(fullError)) {
