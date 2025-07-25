@@ -1,5 +1,5 @@
 export const links = {
-  home: 'https://www.hyperlane.xyz',
+  home: 'https://www.availproject.org',
   explorer: 'https://explorer.hyperlane.xyz',
   discord: 'https://discord.gg/VK9ZUy3aTV',
   github: 'https://github.com/hyperlane-xyz/hyperlane-warp-ui-template',
@@ -14,4 +14,5 @@ export const links = {
   bounty:
     'https://github.com/search?q=org:hyperlane-xyz+label:bounty+is:open+is:issue&type=issues&s=&o=desc',
   imgPath: 'https://cdn.jsdelivr.net/gh/hyperlane-xyz/hyperlane-registry@main',
+  nexus: 'https://www.availproject.org/nexus'
 };
