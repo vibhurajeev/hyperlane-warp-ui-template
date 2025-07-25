@@ -15,6 +15,7 @@ export function ChainConnectionWarning({
   origin: ChainName;
   destination: ChainName;
 }) {
+  console.log("Filter", origin, "Destination", destination)
   const multiProvider = useMultiProvider();
   const originMetadata = multiProvider.getChainMetadata(origin);
   const destinationMetadata = multiProvider.getChainMetadata(destination);
